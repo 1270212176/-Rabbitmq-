@@ -338,3 +338,79 @@ public void sendFanoutExchange(){
 
 
 **注意：交换机只能做消息的转发不能做消息的存储，如果路由没有成功，消息会丢失**
+
+
+
+### 12 路由交换机（Direct）
+
+接受到的消息根据规则路由到指定的队列中（路由模式）
+
+**路由规则**
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\路由规则.png)
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\l路由模式.png)
+
+
+
+**注意：一个队列可以绑定多个bindingkey**
+
+
+
+消费者
+
+```
+//路由模式
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "direct.queue1"),
+        exchange = @Exchange(name = "itcast.direct",type = ExchangeTypes.DIRECT),//type可省略
+        key = {"red","blue"}
+))
+public void directQueue1(String msg) throws Exception{
+    System.err.println("directQueue接收到消息：[" + msg +"]");
+
+}
+```
+
+```
+//路由模式2
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "direct.queue2"),
+        exchange = @Exchange(name = "itcast.direct",type = ExchangeTypes.DIRECT),//type可省略
+        key = {"red","yellow"}
+))
+public void directQueue2(String msg) throws Exception{
+    System.err.println("directQueue2接收到消息：[" + msg +"]");
+
+}
+```
+
+
+
+生产者
+
+**blue表示队列要具有bindingkey为blue的才可以收到信息，即队列1**
+
+```
+@Test
+public void sendDirectExchange(){
+    //交换机名称
+    String exchangeName = "itcast.direct";
+
+    //消息
+    String message = "hello,blue";
+
+    rabbitTemplate.convertAndSend(exchangeName,"blue",message);
+}
+```
+
+
+
+### 13 Direct与Fanout区别
+
+1 Fanout将消息发送给每一个与它绑定的队列
+
+2 direct将消息发送给与Routerkey一致的bindingkey
+
+3 direct中如果多个队列具有相同的bindingkey则功能与fanout相似
+
