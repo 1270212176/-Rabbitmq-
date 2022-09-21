@@ -414,3 +414,112 @@ public void sendDirectExchange(){
 
 3 direct中如果多个队列具有相同的bindingkey则功能与fanout相似
 
+### 14 TopicExchange(发布订阅)
+
+TopicExchange与DirectExchange类似，区别在于Routerkey必须是多个单词的列表，并以点（**.**）进行分割
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\通配符例子.png)
+
+
+
+实现TopicExchange步骤
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\发布订阅实现步骤.png)
+
+
+
+消费者
+
+```
+//发布订阅模式1
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "topic.queue1"),
+        exchange = @Exchange(name = "itcast.topic",type = ExchangeTypes.TOPIC),
+        key = "ch.#"
+))
+public void topicQueue1(String msg) throws Exception{
+    System.out.println("消费者topic1接收到消息：[" + msg +"]");
+}
+
+//发布订阅模式2
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "topic.queue2"),
+        exchange = @Exchange(name = "itcast.topic",type = ExchangeTypes.TOPIC),
+        key = "#.news"
+))
+public void topicQueue2(String msg) throws Exception{
+    System.out.println("消费者topic2接收到消息：[" + msg +"]");
+}
+```
+
+
+
+生产者
+
+```
+@Test
+public void sendTopicExchange(){
+    //交换机名称
+    String exchangeName = "itcast.topic";
+
+    //消息
+    String message = "Rabbitmq学习了";
+
+    rabbitTemplate.convertAndSend(exchangeName,"ch.news",message);
+}
+```
+
+
+
+### 15 SpringAMQP消息转换器（序列化）
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\消息转化器.png)
+
+
+
+声明队列（在消费者的配置类下声明，再重启消费者即可创建成功）
+
+```
+@Bean
+public Queue objectQueue(){
+    return new Queue("object.queue");
+}
+```
+
+生产者
+
+```
+@Test
+public void sendObjectMessage(){
+
+    Map<String,Object> msg = new HashMap<>();
+    msg.put("name","张三");
+    msg.put("age",20);
+
+    rabbitTemplate.convertAndSend("object.queue",msg);
+}
+```
+
+**上面操作会序列化，默认会采用jdk的序列化（ObjectOutputStream），性能差、安全性差、序列化长度过长,所以推荐采用Json序列化格式**
+
+
+
+json序列化步骤
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\json序列化.png)
+
+
+
+消费者
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\消费者序列化.png)
+
+
+
+**MessageConverter可以放在启动类上面**
+
+
+
+序列化与反序列化
+
+![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\序列化与反序列化.png)
