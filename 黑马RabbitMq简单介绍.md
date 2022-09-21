@@ -247,8 +247,13 @@ spring:
     @Bean
     public FanoutExchange fanoutExchange(){
         return new FanoutExchange("itcast.fanout");
+        
     }
 ```
+
+
+
+
 
 
 
@@ -268,6 +273,16 @@ spring:
                 .bind(fanoutQueue1)
                 .to(fanoutExchange);
     }
+```
+
+
+
+```
+//new Queue，分别是durable,exclusive,autoDelete,
+        // durable 即是否持久化.默认是false，
+        //exclusive 只能被当前创建的连接使用，而且当连接关闭后队列即被删除.默认也是false
+        //是否自动删除，当没有生产者或者消费者使用此队列，该队列会自动删除。
+        //设置durable为true其余为false。
 ```
 
 
@@ -308,6 +323,21 @@ public void fanoutExchange(String msg) throws Exception{
 @RabbitListener(queues = "fanout.queue2")
 public void fanoutExchange2(String msg) throws Exception{
     System.err.println("fanout.queue2接收到消息：[" + msg +"]" + LocalTime.now());
+
+}
+```
+
+
+
+**以下代码作用与上面类似**
+
+```
+@RabbitListener(bindings = @QueueBinding(
+        value = @Queue(name = "fanout.queue1"),
+        exchange = @Exchange(name = "itcast.fanout",type = ExchangeTypes.FANOUT)
+))
+public void fanoutExchange3(String msg) throws Exception{
+    System.err.println("fanout.queue1接收到消息：[" + msg +"]" + LocalTime.now());
 
 }
 ```
@@ -523,3 +553,219 @@ json序列化步骤
 序列化与反序列化
 
 ![](C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\序列化与反序列化.png)
+
+
+
+### 16 消息确认ack
+
+消息确认ack：如果在处理消息的过程中，消费者的服务器在处理消息的时候出现异常，那么可能这条正在处理的消息就没有完成消息消费，数据就会丢失。为了确保数据不会丢失，[RabbitMQ](https://so.csdn.net/so/search?q=RabbitMQ&spm=1001.2101.3001.7020)支持消息确定-ACK。
+
+默认情况下 spring-boot-data-amqp 是自动ACK机制，就意味着 MQ 会在消息发送完毕后，自动帮我们去ACK，然后删除消息的信息。这样依赖就存在这样一个问题：
+如果消费者处理消息需要较长时间，最好的做法是消费端处理完之后手动去确认
+
+
+
+### 17 消息的过期时间TTL
+
+过期时间TTL表示可以对消息设置预期的时间，在这个时间内都可以被消费者接收获取；过了之后消息将自动被删除。
+
+**注意：删除默认是直接从队列中移除，但一般是将消息移入死信队列**
+
+**RabbitMQ可以对消息和队列设置TTL。**
+
+设置过期时间有两种方式
+
+- 第一种方法是通过队列属性设置，队列中所有消
+- 息都有相同的过期时间。
+- 第二种方法是对消息进行单独设置，每条消息TTL可以不同。
+
+
+
+**1 对队列进行设置**
+
+声明一个队列交换机，并将二者绑定
+
+```
+//队列TTL
+@Bean
+public Queue ttlQueue(){
+    Map<String,Object> args =new HashMap<>();
+    args.put("x-message-ttl",5000);//这里一定是int类型
+    return new Queue("ttl.queue",true,false,false,args);//将时间参数放上，设置过期时间
+}
+//ttl交换机
+@Bean
+public DirectExchange ttlExchange(){
+    return new DirectExchange("ttl_exchange");
+}
+
+//绑定ttl交换机与ttl队列
+@Bean
+public Binding ttlBinding(){
+    return BindingBuilder
+            .bind(ttlQueue())
+            .to(ttlExchange()).with("ttl");//路由交换机在绑定的时候需要设置Routerkey
+}
+```
+
+
+
+生产者
+
+```
+@Test
+public void sendDirectExchange(){
+    //交换机名称
+    String exchangeName = "ttl_exchange";
+
+    //消息
+    String message = "hello,ttl";
+
+    rabbitTemplate.convertAndSend(exchangeName,"ttl",message);
+}
+```
+
+
+
+**2 给消息设置过期时间**
+
+```
+//队列TTL
+@Bean
+public Queue ttlQueue1(){
+ 
+    return new Queue("ttl.queue",true);
+}
+
+//ttl交换机
+    @Bean
+    public DirectExchange ttlExchange(){
+        return new DirectExchange("ttl_exchange");
+    }
+
+//绑定ttl交换机与ttl队列
+@Bean
+public Binding ttlBinding2(){
+    return BindingBuilder
+            .bind(ttlQueue1())
+            .to(ttlExchange()).with("ttl-message");
+}
+```
+
+在生产者处设置消息的过期时间
+
+```
+@Test
+    public void ttlMessage(){
+
+        //交换机名称
+        String exchangeName = "ttl_exchange";
+
+
+
+        MessagePostProcessor messagePostProcessor = new MessagePostProcessor() {
+            @Override
+            public Message postProcessMessage(Message message) throws AmqpException {
+                message.getMessageProperties().setExpiration("3000");
+                return message;
+            }
+        };
+//        //消息
+        String message = "消息设置过期时间";
+        rabbitTemplate.convertAndSend(exchangeName,"ttl-message",message,messagePostProcessor);
+    }
+```
+
+****
+
+
+
+**注意：如果同时对队列和消息设置了过期时间，以ttl值小的为准，比如笔记中消息ttl为3秒，而队列ttl为5秒，则以消的ttl为准**
+
+
+
+**两者区别：对消息设置过期时间，消息一旦过期会直接移除**
+
+**而对队列设置过期时间，则该队列称为过期队列，过期队列的消息过期后可以写入死信队列**
+
+
+
+
+
+
+
+
+
+
+
+### 18 死信队列
+
+DLX 即死信交换机，当消息在一个队列中变成死信(dead message)之后，它能被重新发送到另一个交换机中，这个交换机就是DLX ，绑定DLX的队列就称之为死信队列。
+
+**消息变成死信，可能是由于以下的原因：**
+
+- 消息被拒绝
+- 消息过期
+- 队列达到最大长度
+
+<img src="C:\Users\1270212176\Desktop\大三下实训\RabbitMq学习截图\死信队列概念示意图.png" style="zoom:67%;" />
+
+**注意：如果队列已经创建了，但是需要修改它的默写参数是需要将队列删除后在进行创建（实际开发中不可以，因该创建新的队列来进行转换和迁移）**
+
+
+
+创建死信队列
+
+```
+@Bean
+public DirectExchange deadExchange(){
+    return new DirectExchange("dead-exchange");
+}
+
+@Bean
+public Queue deadQueue(){
+    return new Queue("dead.queue");
+}
+
+@Bean
+public Binding deadBinding(){
+    return BindingBuilder.bind(deadQueue())
+            .to(deadExchange()).with("dead.queue.exchange");
+}
+```
+
+
+
+在正常队列中设置与死信队列的绑定
+
+```
+//队列TTL
+@Bean
+public Queue ttlQueue(){
+    Map<String,Object> args =new HashMap<>();
+    args.put("x-message-ttl",5000);//这里一定是int类型，过期时间
+    //args.put("x-max-length",3);//设置队列最大长度
+    args.put("x-dead-letter-exchange","dead-exchange");//前一个参数为RabbitMq管理界面设置死信队列处的关键字，后一个为死信队列的队列名
+    args.put("x-dead-letter-router-key","ttl");//交换机为Redir交换机才需要设置（即fanout不需要配置）
+    // 前一个参数仍然是从RabbitMq管理界面拿到的，后一个为你设置的Router-key
+    return new Queue("ttl.queue",true,false,false,args);//将时间参数放上，设置过期时间
+}
+//ttl交换机
+@Bean
+public DirectExchange ttlExchange(){
+    return new DirectExchange("ttl_exchange");
+}
+
+//绑定ttl交换机与ttl队列
+@Bean
+public Binding ttlBinding(){
+    return BindingBuilder
+            .bind(ttlQueue())
+            .to(ttlExchange()).with("ttl");
+}
+```
+
+
+
+过期时间+死信队列=》延迟队列
+
